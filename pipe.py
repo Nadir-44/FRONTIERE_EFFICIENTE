@@ -867,7 +867,7 @@ def render_equity_tab():
 
         if bench_gics2_for_sel is not None:
             gics2_tolerance = st.slider(
-                "Écart autorisé autour du poids du bench GICS 2 (± points de %)", 0, 50, 2, 1,
+                "Écart autorisé autour du poids du bench GICS 2 (± points de %)", 0, 50, 50, 1,
                 key="eq_gics2_tolerance",
                 help="Préremplit Min % = poids du bench − x, Max % = poids du bench + x, pour chaque "
                      "sous-secteur GICS 2. Modifiable ensuite ligne par ligne dans le tableau.",
