@@ -586,7 +586,7 @@ def render_equity_tab():
     with st.expander("⚙️ Paramètres", expanded=True):
         c1, c2 = st.columns(2)
         with c1:
-            uploaded_file = st.file_uploader("DATASTREAM.xlsx / .xlsm (Equity) — laisse vide pour utiliser le fichier par défaut", type=["xlsx", "xlsm"], key="eq_upload")
+            uploaded_file = st.file_uploader("Fichier de données (.xlsx / .xlsm) — laisse vide pour utiliser le fichier par défaut", type=["xlsx", "xlsm"], key="eq_upload")
             selected_sheets = []
             file_bytes, file_source = None, None
             if uploaded_file is not None:
@@ -652,7 +652,7 @@ def render_equity_tab():
 
     if file_bytes is None:
         st.info(
-            f"👈 Upload un DATASTREAM.xlsx, ou dépose-le au chemin par défaut configuré : "
+            f"👈 Charge un fichier de données, ou dépose-le au chemin par défaut : "
             f"`{EQ_DEFAULT_FILE_PATH}`"
         )
         return
@@ -661,7 +661,7 @@ def render_equity_tab():
         st.info("👈 Sélectionne au moins une feuille d'univers dans les paramètres.")
         return
 
-    with st.spinner("Parsing DATASTREAM.xlsx..."):
+    with st.spinner("Lecture du fichier de données..."):
         prices, returns, tickers, gics1_map, gics2_map, duplicate_tickers = eq_load_and_clean_multi(
             file_bytes, lookback_years, selected_sheets
         )
@@ -946,7 +946,7 @@ def render_equity_tab():
 
 
 # ═════════════════════════════════════════════════════════════
-# TAB 2 — MULTI-ASSET  (fixed DATASTREAM row layout + Asset Type row)
+# TAB 2 — MULTI-ASSET  (fixed row layout + Asset Type row)
 # ═════════════════════════════════════════════════════════════
 # Row 0 -> EMPTY
 # Row 1 -> Asset Type (bond, equity, ...)
@@ -1430,7 +1430,7 @@ def render_multi_asset_tab():
     with st.expander("⚙️ Paramètres généraux", expanded=True):
         c1, c2 = st.columns(2)
         with c1:
-            uploaded_file = st.file_uploader("Fichier maître (Bloomberg Excel .xlsx / .xlsm)", type=["xlsx", "xlsm"], key="ma_upload")
+            uploaded_file = st.file_uploader("Fichier de données (.xlsx / .xlsm)", type=["xlsx", "xlsm"], key="ma_upload")
             sheet_name = 0
             if uploaded_file is not None:
                 sheet_names = get_sheet_names(uploaded_file.getvalue())
@@ -1473,11 +1473,11 @@ def render_multi_asset_tab():
             st.rerun()
 
     if uploaded_file is None:
-        st.info("👈 Upload le fichier maître Bloomberg (Excel) pour commencer.")
+        st.info("👈 Charge le fichier de données pour commencer.")
         return
 
     file_bytes = uploaded_file.getvalue()
-    with st.spinner("Lecture du fichier maître..."):
+    with st.spinner("Lecture du fichier de données..."):
         try:
             prices_full, name_map, type_map = ma_load_and_clean(file_bytes, sheet_name)
         except (ValueError, IndexError) as e:
