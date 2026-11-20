@@ -459,10 +459,16 @@ BENCH_POIDS_ROW_DATA_START = 1  # 0-indexed row 2
 BENCH_POIDS_COL_SECTOR = 0       # column A
 BENCH_POIDS_COL_DATA_START = 1   # column B
 
+# ── Benchmark GICS 2 weights sheet layout ─────────────────
+# Même format que BENCH_POIDS : row 1 = nom de chaque bench (col B+),
+# row 2+ = col A nom du sous-secteur GICS 2, col B+ poids en décimal.
+# Plusieurs orthographes acceptées pour le nom d'onglet (insensible à la casse).
+BENCH_POIDS_GICS2_SHEET_NAMES = ["GICS_2", "GICS 2", "GICS2"]
+
 # 👉 Feuilles à exclure du sélecteur "Univers" (Equity) — ajoute ici tout nom de
 # feuille qui n'est pas un univers investissable. Comparaison insensible à la
 # casse/espaces (via find_sheet_name).
-EQ_EXCLUDED_SHEET_NAMES = [BENCH_SHEET_NAME, BENCH_POIDS_SHEET_NAME, "GICS"]
+EQ_EXCLUDED_SHEET_NAMES = [BENCH_SHEET_NAME, BENCH_POIDS_SHEET_NAME, "GICS"] + BENCH_POIDS_GICS2_SHEET_NAMES
 
 
 @st.cache_data(show_spinner=False)
@@ -824,10 +830,55 @@ def render_equity_tab():
         st.error("🚫 Min % > Max % pour le(s) secteur(s) : " + ", ".join(invalid_gics1["GICS 1"].tolist()))
     gics1_bounds = {row["GICS 1"]: (row["Min %"] / 100, row["Max %"] / 100) for _, row in edited_gics1.iterrows()}
 
-    # ── Sub-sector constraints (GICS 2) — editable table, optional ──
-    with st.expander("📊 Contraintes par sous-secteur (GICS 2) — optionnel", expanded=False):
+    # ── Sub-sector constraints (GICS 2) — prefilled from the GICS_2 bench weights sheet ──
+    bench_gics2_for_sel = None
+    bench_gics2_sheet_actual = None
+    for _cand in BENCH_POIDS_GICS2_SHEET_NAMES:
+        bench_gics2_sheet_actual = find_sheet_name(sheet_names, _cand)
+        if bench_gics2_sheet_actual is not None:
+            break
+    if bench_name is not None and bench_gics2_sheet_actual is not None:
+        bench_gics2_all = load_bench_weights(file_bytes, bench_gics2_sheet_actual)
+        if bench_name in bench_gics2_all.columns:
+            bench_gics2_for_sel = bench_gics2_all[bench_name]
+
+    with st.expander(
+        "📊 Contraintes par sous-secteur (GICS 2)" + ("" if bench_gics2_for_sel is not None else " — optionnel"),
+        expanded=bench_gics2_for_sel is not None,
+    ):
         gics2_values = sorted(set(edited_df["GICS 2"]))
-        gics2_editor_df = pd.DataFrame({"GICS 2": gics2_values, "Min %": 0.0, "Max %": 100.0})
+
+        if bench_gics2_for_sel is not None:
+            gics2_tolerance = st.slider(
+                "Écart autorisé autour du poids du bench GICS 2 (± points de %)", 0, 50, 2, 1,
+                key="eq_gics2_tolerance",
+                help="Préremplit Min % = poids du bench − x, Max % = poids du bench + x, pour chaque "
+                     "sous-secteur GICS 2. Modifiable ensuite ligne par ligne dans le tableau.",
+            )
+            st.caption(
+                f"Bornes préremplies autour du poids de {bench_name} dans '{bench_gics2_sheet_actual}' "
+                f"(± {gics2_tolerance} pts). Sous-secteurs absents du bench restent non bornés (0–100%)."
+            )
+        elif bench_name is not None and bench_gics2_sheet_actual is not None:
+            st.caption(
+                f"⚠️ Aucune colonne '{bench_name}' trouvée dans '{bench_gics2_sheet_actual}' — bornes "
+                f"sous-secteur non préremplies depuis le bench."
+            )
+
+        def _gics2_default_bounds(sec):
+            if bench_gics2_for_sel is not None and sec in bench_gics2_for_sel.index and pd.notna(bench_gics2_for_sel[sec]):
+                w_pct = float(bench_gics2_for_sel[sec]) * 100
+                lo = max(0.0, w_pct - gics2_tolerance)
+                hi = min(100.0, w_pct + gics2_tolerance)
+                return round(lo, 1), round(hi, 1)
+            return 0.0, 100.0
+
+        gics2_default_bounds = [_gics2_default_bounds(sec) for sec in gics2_values]
+        gics2_editor_df = pd.DataFrame({
+            "GICS 2": gics2_values,
+            "Min %": [b[0] for b in gics2_default_bounds],
+            "Max %": [b[1] for b in gics2_default_bounds],
+        })
         edited_gics2 = st.data_editor(
             gics2_editor_df,
             column_config={
