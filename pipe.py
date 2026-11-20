@@ -460,23 +460,37 @@ BENCH_POIDS_COL_SECTOR = 0       # column A
 BENCH_POIDS_COL_DATA_START = 1   # column B
 
 # ── Benchmark GICS 2 weights sheet layout ─────────────────
-# Même format que BENCH_POIDS : row 1 = nom de chaque bench (col B+),
-# row 2+ = col A nom du sous-secteur GICS 2, col B+ poids en décimal.
+# Ligne d'en-tête détectée automatiquement (actuellement ligne 7) : col A = "GICS 2",
+# col B+ = nom de chaque bench ("SX5E Index", "SXXP Index"... mêmes noms que BENCH).
+# Lignes suivantes : col A = sous-secteur GICS 2, col B+ = poids (format % Excel = décimal).
 # Plusieurs orthographes acceptées pour le nom d'onglet (insensible à la casse).
 BENCH_POIDS_GICS2_SHEET_NAMES = ["GICS_2", "GICS 2", "GICS2"]
 
 # 👉 Feuilles à exclure du sélecteur "Univers" (Equity) — ajoute ici tout nom de
 # feuille qui n'est pas un univers investissable. Comparaison insensible à la
 # casse/espaces (via find_sheet_name).
-EQ_EXCLUDED_SHEET_NAMES = [BENCH_SHEET_NAME, BENCH_POIDS_SHEET_NAME, "GICS"] + BENCH_POIDS_GICS2_SHEET_NAMES
+EQ_EXCLUDED_SHEET_NAMES = [BENCH_SHEET_NAME, BENCH_POIDS_SHEET_NAME, "GICS", "GICS 1", "GICS_1", "GICS1"] + BENCH_POIDS_GICS2_SHEET_NAMES
 
 
 @st.cache_data(show_spinner=False)
-def load_bench_weights(file_bytes: bytes, sheet_name=BENCH_POIDS_SHEET_NAME) -> pd.DataFrame:
-    """Returns a DataFrame indexed by GICS 1 sector name, one column per benchmark, decimal weights."""
+def load_bench_weights(file_bytes: bytes, sheet_name=BENCH_POIDS_SHEET_NAME, auto_header=False) -> pd.DataFrame:
+    """Returns a DataFrame indexed by sector name, one column per benchmark, decimal weights.
+
+    auto_header=False : ligne des noms de bench fixée à BENCH_POIDS_ROW_NAME (format BENCH_POIDS).
+    auto_header=True  : ligne des noms de bench = première ligne non vide à partir de la col B
+                        (ex. onglet "GICS 2" où les en-têtes sont en ligne 7).
+    """
     raw = pd.read_excel(io.BytesIO(file_bytes), sheet_name=sheet_name, header=None, index_col=None)
 
-    name_row = raw.iloc[BENCH_POIDS_ROW_NAME, BENCH_POIDS_COL_DATA_START:]
+    header_row = BENCH_POIDS_ROW_NAME
+    if auto_header:
+        block = raw.iloc[:, BENCH_POIDS_COL_DATA_START:]
+        non_empty = block.notna().any(axis=1)
+        if non_empty.any():
+            header_row = int(non_empty.idxmax())
+    data_start_row = header_row + 1
+
+    name_row = raw.iloc[header_row, BENCH_POIDS_COL_DATA_START:]
     names_raw = []
     for nm in name_row.values:
         nm_str = str(nm).strip()
@@ -485,11 +499,14 @@ def load_bench_weights(file_bytes: bytes, sheet_name=BENCH_POIDS_SHEET_NAME) -> 
         names_raw.append(nm_str)
     n_bench_raw = len(names_raw)
 
-    data_block = raw.iloc[BENCH_POIDS_ROW_DATA_START:, :]
+    data_block = raw.iloc[data_start_row:, :]
     sectors = data_block.iloc[:, BENCH_POIDS_COL_SECTOR].astype(str).str.strip()
     weights = data_block.iloc[:, BENCH_POIDS_COL_DATA_START:BENCH_POIDS_COL_DATA_START + n_bench_raw].copy()
     weights.columns = names_raw
     weights = weights.apply(pd.to_numeric, errors="coerce")
+    # Sécurité : si les poids sont saisis en points (4.22) au lieu de décimal (0.0422)
+    if auto_header and weights.max().max() > 1.5:
+        weights = weights / 100
     weights.index = sectors
     weights = weights[weights.index.notna() & (weights.index != "") & (weights.index.str.lower() != "nan")]
     weights = weights.loc[~weights.index.duplicated(keep="first")]
@@ -838,7 +855,7 @@ def render_equity_tab():
         if bench_gics2_sheet_actual is not None:
             break
     if bench_name is not None and bench_gics2_sheet_actual is not None:
-        bench_gics2_all = load_bench_weights(file_bytes, bench_gics2_sheet_actual)
+        bench_gics2_all = load_bench_weights(file_bytes, bench_gics2_sheet_actual, auto_header=True)
         if bench_name in bench_gics2_all.columns:
             bench_gics2_for_sel = bench_gics2_all[bench_name]
 
